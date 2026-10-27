@@ -3,13 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hedef 4 (Connect Four) - İki Kişilik Akıl Oyunu</title>
-    <meta name="description" content="Modern, görsel lobi arayüzlü, 15 saniyelik zamanlayıcılı, hamle geri almalı 2 kişilik Connect Four oyunu.">
+    <title>Hedef 4 (Connect Four) - Online Multiplayer Akıl Oyunu</title>
+    <meta name="description" content="Online Multiplayer, oda sistemli, Firebase gerçek zamanlı veri eşitlemeli iki kişilik Connect Four oyunu.">
     <!-- Google Fonts: Outfit -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+
+    <!-- Firebase App & Realtime Database CDN (Compat Sürümü) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
 </head>
 <body>
 
@@ -20,7 +24,7 @@
     </button>
 
     <!-- ======================================================================
-         1. GÖRSEL OYUN LOBİSİ (PROFESYONEL INTRO SCREEN)
+         1. GÖRSEL OYUN LOBİSİ & ÇOK OYUNCULU ODA SİSTEMİ (ONLINE MULTIPLAYER)
          ====================================================================== -->
     <section class="intro-screen" id="introScreen" aria-label="Oyun Lobisi">
         <!-- Arka Plan Işıltı ve Konfeti Parçacıkları -->
@@ -37,10 +41,10 @@
             <!-- 1. En Üst Başlık Alanı -->
             <header class="lobby-header">
                 <div class="lobby-badge">
-                    <span class="badge-dot"></span> Canlı Strateji Düellosu
+                    <span class="badge-dot"></span> Online Canlı Çok Oyunculu
                 </div>
                 <h1 class="lobby-title">HEDEF <span class="neon-four">4</span></h1>
-                <p class="lobby-subtitle">İki Kişilik Akıl ve Strateji Oyunu</p>
+                <p class="lobby-subtitle">İki Cihaz Arasında Gerçek Zamanlı Düello</p>
             </header>
 
             <!-- 2. İki Ana Bölüm (Grid) -->
@@ -53,7 +57,7 @@
                             <span class="speed-icon">⏱️</span>
                             <div class="speed-text">
                                 <span class="speed-val">15 Saniye</span>
-                                <span class="speed-desc">Hızlı Hamle Limiti</span>
+                                <span class="speed-desc">Senkron Hamle Limiti</span>
                             </div>
                         </div>
 
@@ -80,7 +84,7 @@
                         </div>
 
                         <div class="illustration-caption">
-                            <span class="live-indicator"></span> 7 Sütun × 6 Satır Yerçekimi Mekaniği
+                            <span class="live-indicator"></span> Gerçek Zamanlı Veritabanı Eşitlemesi
                         </div>
                     </div>
                 </div>
@@ -89,33 +93,33 @@
                 <div class="lobby-col-right">
                     <div class="how-to-play-card">
                         <div class="how-header">
-                            <span class="how-icon">💡</span>
-                            <h2>NASIL OYNANIR?</h2>
+                            <span class="how-icon">🌐</span>
+                            <h2>ÇOK OYUNCULU MOD</h2>
                         </div>
 
                         <ul class="rules-list">
                             <li class="rule-item">
-                                <div class="rule-icon-box">👤</div>
+                                <div class="rule-icon-box">🏠</div>
                                 <div class="rule-content">
-                                    <p>İsimlerinizi girin ve oyunu başlatın.</p>
+                                    <p><strong>Yeni Oda Kur</strong> butonuna basarak 5 haneli özel oda kodu üretin.</p>
                                 </div>
                             </li>
                             <li class="rule-item">
-                                <div class="rule-icon-box">🎯</div>
+                                <div class="rule-icon-box">🔗</div>
                                 <div class="rule-content">
-                                    <p>Sırayla bir sütun seçin; taşlar en alta düşer.</p>
+                                    <p>Oda kodunu arkadaşınıza gönderin ve odaya katılmasını bekleyin.</p>
                                 </div>
                             </li>
                             <li class="rule-item">
-                                <div class="rule-icon-box">🏆</div>
+                                <div class="rule-icon-box">🔴</div>
                                 <div class="rule-content">
-                                    <p>Yatay, dikey veya çapraz 4 taşı yan yana ilk dizen kazanır!</p>
+                                    <p>Odayı kuran <strong>Kırmızı (1. Oyuncu)</strong>, katılan <strong>Sarı (2. Oyuncu)</strong> olur.</p>
                                 </div>
                             </li>
                             <li class="rule-item">
-                                <div class="rule-icon-box">⏱️</div>
+                                <div class="rule-icon-box">⚡</div>
                                 <div class="rule-content">
-                                    <p>Süreniz 15 saniye! Unutmayın, son hamleyi geri alabilirsiniz!</p>
+                                    <p>Sıra yalnızca sizdeyken tahtaya tıklayabilirsiniz. Süre her iki ekranda aynı anda 15s geri sayar!</p>
                                 </div>
                             </li>
                         </ul>
@@ -123,67 +127,106 @@
                 </div>
             </div>
 
-            <!-- 3. Oyuncu Girişleri ve Butonlar (Alt Kısım) -->
+            <!-- 3. Oyuncu İsmi ve Oda İşlemleri (Alt Kısım) -->
             <div class="lobby-bottom-panel">
-                <form class="lobby-player-form" id="playerForm" onsubmit="return false;" autocomplete="off">
-                    <!-- Giriş Kutuları (Kırmızı & Sarı Avatar İkonlu) -->
-                    <div class="player-inputs-row">
-                        <!-- 1. Oyuncu Girişi (Kesinlikle boş ve sadece placeholder) -->
-                        <div class="input-card player-red-card">
-                            <div class="avatar-icon red-avatar" title="1. Oyuncu (Kırmızı)">
-                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path>
-                                    <circle cx="12" cy="7" r="4"></circle>
+                <div class="lobby-player-box">
+                    <!-- Oyuncu İsmi Girişi -->
+                    <div class="input-card player-single-card">
+                        <div class="avatar-icon solo-avatar" title="Oyuncu Profiliniz">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path>
+                                <circle cx="12" cy="7" r="4"></circle>
+                            </svg>
+                        </div>
+                        <div class="input-field-group">
+                            <label for="playerNameInput">Oyuncu İsminiz</label>
+                            <input type="text" id="playerNameInput" maxlength="15" placeholder="İsminizi Yazın" autocomplete="off">
+                        </div>
+                    </div>
+
+                    <!-- Oda İşlemleri İki Sütunlu Kartlar (Yeni Oda Kur / Odaya Katıl) -->
+                    <div class="room-actions-grid">
+                        <!-- 1. Seçenek: Yeni Oda Kur (Host) -->
+                        <div class="room-card create-room-card">
+                            <div class="room-card-badge">1. Oyuncu (Kırmızı)</div>
+                            <h3>Yeni Oda Kur</h3>
+                            <p>Benzersiz bir oda oluşturup kodunu arkadaşınla paylaş.</p>
+                            <button type="button" class="btn btn-lobby-start" id="btnCreateRoom">
+                                <span>YENİ ODA KUR</span>
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                                    <line x1="5" y1="12" x2="19" y2="12"></line>
                                 </svg>
-                            </div>
-                            <div class="input-field-group">
-                                <label for="player1Input">1. Oyuncu (Kırmızı)</label>
-                                <input type="text" id="player1Input" maxlength="15" placeholder="1. Oyuncu İsmi" autocomplete="off">
-                            </div>
+                            </button>
                         </div>
 
-                        <!-- 2. Oyuncu Girişi (Kesinlikle boş ve sadece placeholder) -->
-                        <div class="input-card player-yellow-card">
-                            <div class="avatar-icon yellow-avatar" title="2. Oyuncu (Sarı)">
-                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path>
-                                    <circle cx="12" cy="7" r="4"></circle>
-                                </svg>
-                            </div>
-                            <div class="input-field-group">
-                                <label for="player2Input">2. Oyuncu (Sarı)</label>
-                                <input type="text" id="player2Input" maxlength="15" placeholder="2. Oyuncu İsmi" autocomplete="off">
+                        <!-- 2. Seçenek: Odaya Katıl (Join) -->
+                        <div class="room-card join-room-card">
+                            <div class="room-card-badge yellow-badge">2. Oyuncu (Sarı)</div>
+                            <h3>Odaya Katıl</h3>
+                            <div class="join-input-wrapper">
+                                <input type="text" id="joinRoomCodeInput" maxlength="8" placeholder="Oda Kodunu Girin (Örn: H4-729)" autocomplete="off">
+                                <button type="button" class="btn btn-join" id="btnJoinRoom">
+                                    <span>KATIL</span>
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                                        <polygon points="6 3 20 12 6 21 6 3"></polygon>
+                                    </svg>
+                                </button>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Buton Grubu: Neon Yeşili Pulse OYUNA BAŞLA + Skorları Sıfırla -->
-                    <div class="lobby-action-buttons">
-                        <button type="submit" class="btn btn-lobby-start" id="btnStartGame">
-                            <span class="btn-text">OYUNA BAŞLA</span>
-                            <svg class="play-icon" width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
-                                <polygon points="6 3 20 12 6 21 6 3"></polygon>
-                            </svg>
-                        </button>
-
-                        <button type="button" class="btn btn-lobby-reset" id="btnResetScoresLobby" title="Kayıtlı skorları sıfırla">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M3 6h18"></path>
-                                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
-                                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
-                            </svg>
-                            <span>Skorları Sıfırla</span>
+                    <!-- Yerel / Tek Cihaz Moduna Geçiş Seçeneği -->
+                    <div class="local-play-link-row">
+                        <button type="button" class="btn-link" id="btnPlayLocalMode">
+                            💻 Aynı Cihazda Yerel Oynamak İstiyorum
                         </button>
                     </div>
-                </form>
+                </div>
             </div>
         </div>
     </section>
 
     <!-- ======================================================================
+         BEKLEME MODALİ (RAKİP BEKLENİYOR OVERLAY)
+         ====================================================================== -->
+    <div class="waiting-modal hidden" id="waitingModal">
+        <div class="waiting-card">
+            <div class="waiting-spinner"></div>
+            <h2>Oda Kuruldu! Rakip Bekleniyor...</h2>
+            <p>Arkadaşınız bu kodu girerek odaya katıldığında maç anında başlayacaktır.</p>
+            
+            <div class="room-code-display-box">
+                <span class="code-label">ODA KODUNUZ</span>
+                <span class="room-code-text" id="displayRoomCode">H4-000</span>
+                <button type="button" class="btn btn-copy" id="btnCopyRoomCode">
+                    <span id="copyIcon">📋</span>
+                    <span id="copyText">Kodu Kopyala</span>
+                </button>
+            </div>
+
+            <button type="button" class="btn btn-cancel-room" id="btnCancelWaiting">
+                Odadan Çık ve İptal Et
+            </button>
+        </div>
+    </div>
+
+    <!-- ======================================================================
          2. ANA OYUN ALANI (GAME CONTAINER) - Başlangıçta gizli
          ====================================================================== -->
     <main class="game-container hidden" id="gameContainer" aria-label="Oyun Alanı">
+        <!-- Online Oda Bilgi Çubuğu -->
+        <div class="online-bar" id="onlineBar">
+            <div class="online-room-info">
+                <span class="room-chip">Oda: <strong id="activeRoomCodeText">H4-000</strong></span>
+                <button type="button" class="btn-copy-chip" id="btnCopyActiveRoom" title="Oda kodunu kopyala">📋</button>
+            </div>
+            <div class="online-role-info" id="myRoleBadge">
+                <span class="role-dot" id="roleDot"></span>
+                <span id="roleText">Rolünüz: Kırmızı</span>
+            </div>
+        </div>
+
         <!-- Başlık Alanı -->
         <header class="game-header">
             <h1 class="game-title">HEDEF <span>4</span></h1>
@@ -253,6 +296,13 @@
 
         <!-- Oyun Tahtası -->
         <div class="board-wrapper">
+            <!-- Sıra rakipteyken kilit göstergesi overlay -->
+            <div class="opponent-turn-overlay hidden" id="opponentOverlay">
+                <div class="overlay-badge">
+                    <span class="waiting-dot"></span> Rakibin Hamlesi Bekleniyor...
+                </div>
+            </div>
+
             <div class="board" id="board" role="grid" aria-label="Connect Four Oyun Tahtası">
                 <!-- 7 sütun x 6 satır (42 hücre) JS ile dinamik olarak yerleştirilecek -->
             </div>
@@ -278,15 +328,14 @@
                 Yeniden Başlat
             </button>
 
-            <!-- Oyuncular / Giriş Ekranına Dönüş Butonu -->
-            <button class="btn btn-secondary" id="btnChangePlayers" title="Giriş ekranına dönüp oyuncu isimlerini değiştirin">
+            <!-- Lobiye / Odadan Çıkış Butonu -->
+            <button class="btn btn-secondary" id="btnChangePlayers" title="Odadan çıkıp lobiye dön">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                    <circle cx="9" cy="7" r="4"></circle>
-                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                    <polyline points="16 17 21 12 16 7"></polyline>
+                    <line x1="21" y1="12" x2="9" y2="12"></line>
                 </svg>
-                Lobiye Dön
+                Odadan Ayrıl
             </button>
 
             <!-- Ses Aç/Kapat Butonu -->
@@ -295,6 +344,16 @@
             </button>
         </div>
     </main>
+
+    <!-- Bildirim / Bağlantı Uyarısı Modali -->
+    <div class="alert-modal hidden" id="alertModal">
+        <div class="alert-card">
+            <div class="alert-icon" id="alertIcon">⚠️</div>
+            <h3 id="alertTitle">Bildirim</h3>
+            <p id="alertMessage">Mesaj</p>
+            <button type="button" class="btn btn-restart" id="btnAlertOk">Tamam</button>
+        </div>
+    </div>
 
     <script src="script.js"></script>
 </body>

@@ -195,16 +195,66 @@
     box-shadow: 0 8px 24px rgba(5, 150, 105, 0.45) !important;
 }
 
-[data-theme="light"] .btn-lobby-reset {
+[data-theme="light"] .player-single-card,
+[data-theme="light"] .room-card {
     background: #ffffff !important;
-    border: 1.5px solid rgba(2, 132, 199, 0.35) !important;
-    color: #0369a1 !important;
+    border: 1px solid rgba(0, 0, 0, 0.1) !important;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.07) !important;
+}
+
+[data-theme="light"] .room-card h3 {
+    color: #0f172a !important;
+}
+
+[data-theme="light"] .room-card p {
+    color: #475569 !important;
+}
+
+[data-theme="light"] .join-input-wrapper input {
+    background: #f8fafc !important;
+    border: 1.5px solid rgba(0, 0, 0, 0.15) !important;
+    color: #0f172a !important;
+}
+
+[data-theme="light"] .join-input-wrapper input::placeholder {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .online-bar {
+    background: #ffffff !important;
+    border-color: rgba(0, 0, 0, 0.1) !important;
+    color: #0f172a !important;
     box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06) !important;
 }
 
-[data-theme="light"] .btn-lobby-reset:hover {
-    background: rgba(2, 132, 199, 0.08) !important;
+[data-theme="light"] .online-role-info {
+    background: #f1f5f9 !important;
+    border-color: rgba(0, 0, 0, 0.08) !important;
+    color: #0f172a !important;
+}
+
+[data-theme="light"] .waiting-card,
+[data-theme="light"] .alert-card {
+    background: #ffffff !important;
+    border-color: rgba(0, 0, 0, 0.1) !important;
+    color: #0f172a !important;
+}
+
+[data-theme="light"] .room-code-display-box {
+    background: #f8fafc !important;
     border-color: #0284c7 !important;
+}
+
+[data-theme="light"] .room-code-text {
+    color: #d97706 !important;
+    text-shadow: none !important;
+}
+
+[data-theme="light"] .btn-link {
+    color: #475569 !important;
+}
+
+[data-theme="light"] .btn-link:hover {
     color: #0284c7 !important;
 }
 
@@ -715,59 +765,440 @@ body,
 }
 
 /* ==========================================================================
-   2. OYUNCU GİRİŞLERİ VE BUTONLAR (ALT KISIM)
+   2. OYUNCU İSMİ VE ÇOK OYUNCULU ODA İŞLEMLERİ (ALT KISIM)
    ========================================================================== */
 .lobby-bottom-panel {
     animation: slideUpFade 0.5s 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.lobby-player-form {
+.lobby-player-box {
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    gap: 16px;
     width: 100%;
 }
 
-.player-inputs-row {
+.player-single-card {
+    background: var(--lobby-card-bg);
+    border: 1.5px solid var(--card-border);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-radius: 16px;
+    padding: 12px 18px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    max-width: 520px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.player-single-card:hover, .player-single-card:focus-within {
+    border-color: #38bdf8;
+    box-shadow: 0 0 25px rgba(56, 189, 248, 0.35);
+    transform: translateY(-2px);
+}
+
+.solo-avatar {
+    background: radial-gradient(circle at 35% 35%, #38bdf8 0%, #2563eb 70%, #1e3a8a 100%);
+    color: #ffffff;
+    box-shadow: 0 0 15px rgba(56, 189, 248, 0.5);
+}
+
+/* Oda İşlemleri Kartları (Yeni Oda Kur & Odaya Katıl) */
+.room-actions-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 16px;
     width: 100%;
 }
 
-@media (max-width: 600px) {
-    .player-inputs-row {
+@media (max-width: 680px) {
+    .room-actions-grid {
         grid-template-columns: 1fr;
     }
 }
 
-.input-card {
+.room-card {
     background: var(--lobby-card-bg);
-    border: 1.5px solid var(--card-border);
+    border: 1px solid var(--lobby-border);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
-    border-radius: 16px;
-    padding: 12px 16px;
+    border-radius: 18px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.room-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 14px 35px rgba(0, 0, 0, 0.35);
+}
+
+.room-card-badge {
+    align-self: flex-start;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    color: #fca5a5;
+}
+
+.room-card-badge.yellow-badge {
+    background: rgba(234, 179, 8, 0.15);
+    border: 1px solid rgba(234, 179, 8, 0.35);
+    color: #fde047;
+}
+
+.room-card h3 {
+    font-size: 1.2rem;
+    font-weight: 800;
+    color: var(--text-primary);
+}
+
+.room-card p {
+    font-size: 0.84rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+/* Odaya Katılma Girdi Alanı */
+.join-input-wrapper {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+    width: 100%;
+}
+
+.join-input-wrapper input {
+    flex: 1;
+    background: rgba(15, 23, 42, 0.7);
+    border: 1.5px solid rgba(255, 255, 255, 0.15);
+    border-radius: 12px;
+    padding: 12px 14px;
+    color: #ffffff;
+    font-size: 0.95rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    outline: none;
+    transition: all 0.25s ease;
+}
+
+.join-input-wrapper input:focus {
+    border-color: #38bdf8;
+    box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.25);
+    background: rgba(15, 23, 42, 0.95);
+}
+
+.btn-join {
+    background: linear-gradient(135deg, #0284c7 0%, #2563eb 100%);
+    color: #ffffff;
+    font-weight: 800;
+    font-size: 0.95rem;
+    padding: 12px 18px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    cursor: pointer;
     display: flex;
     align-items: center;
-    gap: 14px;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+    gap: 6px;
+    box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4);
     transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.input-card:hover {
+.btn-join:hover {
+    background: linear-gradient(135deg, #38bdf8 0%, #3b82f6 100%);
+    box-shadow: 0 6px 20px rgba(56, 189, 248, 0.55);
     transform: translateY(-2px);
-    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
 }
 
-.player-red-card:hover, .player-red-card:focus-within {
-    border-color: var(--player1-color);
-    box-shadow: 0 0 25px rgba(239, 68, 68, 0.35);
+.local-play-link-row {
+    text-align: center;
+    margin-top: 4px;
 }
 
-.player-yellow-card:hover, .player-yellow-card:focus-within {
-    border-color: var(--player2-color);
-    box-shadow: 0 0 25px rgba(234, 179, 8, 0.35);
+.btn-link {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: underline;
+    opacity: 0.8;
+    transition: opacity 0.2s, color 0.2s;
+}
+
+.btn-link:hover {
+    opacity: 1;
+    color: var(--accent);
+}
+
+/* ==========================================================================
+   BEKLEME MODALİ (RAKİP BEKLENİYOR OVERLAY)
+   ========================================================================== */
+.waiting-modal, .alert-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 500;
+    background: rgba(2, 6, 23, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    animation: fadeInContainer 0.3s ease forwards;
+}
+
+.waiting-modal.hidden, .alert-modal.hidden {
+    display: none !important;
+}
+
+.waiting-card, .alert-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 24px;
+    padding: 32px 28px;
+    max-width: 440px;
+    width: 100%;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+    animation: introCardPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.waiting-spinner {
+    width: 52px;
+    height: 52px;
+    border: 4px solid rgba(56, 189, 248, 0.2);
+    border-top-color: #38bdf8;
+    border-radius: 50%;
+    animation: spinWait 1s linear infinite;
+}
+
+@keyframes spinWait {
+    to { transform: rotate(360deg); }
+}
+
+.waiting-card h2 {
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: var(--text-primary);
+}
+
+.waiting-card p {
+    font-size: 0.88rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+.room-code-display-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 16px;
+    width: 100%;
+    background: rgba(15, 23, 42, 0.6);
+    border: 1.5px dashed rgba(56, 189, 248, 0.5);
+    border-radius: 16px;
+}
+
+.code-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+}
+
+.room-code-text {
+    font-size: 2.4rem;
+    font-weight: 900;
+    letter-spacing: 4px;
+    color: #facc15;
+    text-shadow: 0 0 15px rgba(234, 179, 8, 0.6);
+}
+
+.btn-copy {
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    font-size: 0.88rem;
+    font-weight: 700;
+    padding: 8px 16px;
+    border-radius: 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+}
+
+.btn-copy:hover {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    transform: translateY(-1px);
+}
+
+.btn-cancel-room {
+    background: transparent;
+    border: none;
+    color: #ef4444;
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    padding: 6px 12px;
+    border-radius: 8px;
+    transition: all 0.2s;
+}
+
+.btn-cancel-room:hover {
+    background: rgba(239, 68, 68, 0.1);
+}
+
+/* ==========================================================================
+   ONLINE ODA BİLGİ ÇUBUĞU (GAME BOARD TOP)
+   ========================================================================== */
+.online-bar {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 14px;
+    font-size: 0.88rem;
+    font-weight: 700;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.online-room-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.room-chip strong {
+    color: #facc15;
+    letter-spacing: 1px;
+}
+
+.btn-copy-chip {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 0.95rem;
+    padding: 2px 4px;
+    border-radius: 4px;
+    transition: transform 0.15s;
+}
+
+.btn-copy-chip:hover {
+    transform: scale(1.2);
+}
+
+.online-role-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.role-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+
+.role-dot.red { background: var(--player1-color); box-shadow: 0 0 8px var(--player1-glow); }
+.role-dot.yellow { background: var(--player2-color); box-shadow: 0 0 8px var(--player2-glow); }
+
+/* ==========================================================================
+   RAKİP SIRASINDAYKEN TAHTA KİLİDİ OVERLAY
+   ========================================================================== */
+.board-wrapper {
+    position: relative;
+}
+
+.opponent-turn-overlay {
+    position: absolute;
+    inset: 6px;
+    z-index: 15;
+    border-radius: var(--border-radius);
+    background: rgba(15, 23, 42, 0.55);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: not-allowed;
+    pointer-events: all;
+    animation: fadeInContainer 0.2s ease forwards;
+}
+
+.opponent-turn-overlay.hidden {
+    display: none !important;
+}
+
+.overlay-badge {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 20px;
+    border-radius: 30px;
+    background: rgba(30, 41, 59, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #ffffff;
+    font-size: 0.95rem;
+    font-weight: 700;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    letter-spacing: 0.5px;
+}
+
+.waiting-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #eab308;
+    box-shadow: 0 0 10px #eab308;
+    animation: livePulse 1.2s infinite;
+}
+
+/* Alert Modali */
+.alert-icon {
+    font-size: 2.4rem;
+}
+
+.alert-card h3 {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--text-primary);
+}
+
+.alert-card p {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
 }
 
 .avatar-icon {

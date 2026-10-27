@@ -1,31 +1,79 @@
 /**
  * ==============================================================================
- * HEDEF 4 (CONNECT FOUR) - OYUN MANTIĞI VE KONTROLÜ (JAVASCRIPT)
+ * HEDEF 4 (CONNECT FOUR) - ONLINE MULTIPLAYER & REALTIME VERİ SENKRONİZASYONU
  * ==============================================================================
  * 
- * Modüller:
- * 1. Sabitler ve Oyun Durumu (State Management & Undo Stack)
- * 2. Gece / Gündüz Teması (Theme Toggle & LocalStorage)
- * 3. Giriş Ekranı & Kalıcılık (Intro Screen & Reset Scores)
- * 4. 15 Saniyelik Hamle Zamanlayıcısı (Turn Timer)
- * 5. Tahta ve UI Başlatma (Initialization & Rendering)
- * 6. Hamle Yapma, Yerçekimi & Geri Alma (Gravity & Undo)
- * 7. Kazanma ve Beraberlik Algoritması (Check Win / Draw)
- * 8. Web Audio API Ses Sentezleyici (Pop, Dıt, Arpej)
+ * Bu dosya aşağıdaki ana mimari katmanları içerir:
+ * 1. Firebase & Hibrit Çok Oyunculu Senkronizasyon Motoru (RTDB & Broadcast Bridge)
+ * 2. Oda (Lobi) Yönetimi (Yeni Oda Kur, Odaya Katıl, Kodu Kopyala)
+ * 3. Oyun İçi Güvenlik, Senkron Zamanlayıcı (15s Timestamp) ve Sıra Kilitleri
+ * 4. Çift Yönlü Hamle Eşitleme (Taş Düşme Animasyonları ve Zafer Senkronu)
+ * 5. Bağlantı Kopması (Disconnect) ve Terk Etme Bildirimleri
+ * 6. Web Audio API Ses Sentezleyicisi & Tema Desteği
  */
 
 // ==============================================================================
-// 1. SABİTLER VE OYUN DURUMU (STATE)
+// 1. FIREBASE VE MULTIPLAYER YAPILANDIRMASI
 // ==============================================================================
-const ROWS = 6;                 // Satır sayısı
-const COLS = 7;                 // Sütun sayısı
-const WIN_COUNT = 4;            // Kazanmak için gereken yan yana taş adedi
-const TURN_TIME_LIMIT = 15;     // Hamle süresi sınırı (saniye)
 
-const PLAYER_RED = 'red';          // 1. Oyuncu (Kırmızı)
-const PLAYER_YELLOW = 'yellow';    // 2. Oyuncu (Sarı)
+/**
+ * 💡 KENDİ FIREBASE PROJENİZİ BAĞLAMAK İÇİN:
+ * Firebase Console'dan (console.firebase.google.com) oluşturduğunuz Realtime Database
+ * bilgilerini aşağıdaki alana yapıştırabilirsiniz.
+ * 
+ * ℹ️ EĞER FIREBASE BİLGİSİ GİRMEDİYSENİZ:
+ * Sistem otomatik olarak "Akıllı Çok Oyunculu Yerel Ağ / Sekme Köprüsü"nü (BroadcastChannel)
+ * devreye sokar. İki ayrı tarayıcı penceresi açarak oda kurup anında online multiplayer gibi
+ * canlı test edebilirsiniz!
+ */
+const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+    databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT_ID.appspot.com",
+    messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+    appId: "YOUR_APP_ID"
+};
 
-// Oyuncu İsimleri (Varsayılan genel etiketler)
+// Firebase başlatma kontrolü
+let rtdb = null;
+let isFirebaseConfigured = false;
+
+try {
+    if (typeof firebase !== 'undefined' && firebaseConfig.apiKey !== "YOUR_API_KEY") {
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        rtdb = firebase.database();
+        isFirebaseConfigured = true;
+        console.log("Firebase Realtime Database başarıyla bağlandı!");
+    } else {
+        console.info("Firebase Realtime Database anahtarları tanımlanmadı. Hibrit Yerel Çok Oyunculu Köprüsü aktif.");
+    }
+} catch (err) {
+    console.warn("Firebase başlatılamadı, yerel multiplayer köprüsü kullanılıyor:", err);
+}
+
+// ==============================================================================
+// 2. SABİTLER VE ÇOK OYUNCULU OYUN DURUMU (STATE)
+// ==============================================================================
+const ROWS = 6;
+const COLS = 7;
+const WIN_COUNT = 4;
+const TURN_TIME_LIMIT = 15;     // Saniye
+
+const PLAYER_RED = 'red';          // 1. Oyuncu (Kırmızı - Oda Kurucu)
+const PLAYER_YELLOW = 'yellow';    // 2. Oyuncu (Sarı - Katılan)
+
+// Çok Oyunculu Oda Durumu
+let currentRoomId = null;
+let myPlayerRole = 'both';         // 'red' | 'yellow' | 'both' (Yerel mod)
+let isOnlineGame = false;
+let roomRef = null;
+let roomUnsubscribe = null;
+
+// Oyuncu İsimleri
 let playerNames = {
     [PLAYER_RED]: '1. Oyuncu',
     [PLAYER_YELLOW]: '2. Oyuncu'
@@ -38,43 +86,72 @@ let scores = {
     ties: 0
 };
 
-// Hamle Geçmişi Yığını (Undo Stack)
-// Her eleman: { row: number, col: number, player: string, wasWinningMove: boolean }
+// Hamle Geçmişi (Undo)
 let moveHistory = [];
 
 // Oyun Tahtası Durumu
-let boardState = [];            // boardState[row][col] -> null | 'red' | 'yellow'
+let boardState = [];
 let currentPlayer = PLAYER_RED;
 let isGameOver = false;
-let isAnimating = false;        // Düşüş veya geri alma animasyonu kilidi
+let isAnimating = false;
 let hoveredCol = -1;
 
 // Zamanlayıcı
-let timeLeft = TURN_TIME_LIMIT;
+let turnStartTime = Date.now();
 let timerInterval = null;
+let currentRemainingSeconds = TURN_TIME_LIMIT;
 
 // Ses ve Tema
 let soundEnabled = true;
 let currentTheme = 'dark';
 
+// Hibrit Yerel Ağ / Sekmeler Arası İletişim Kanalı (BroadcastChannel Bridge)
+let broadcastChannel = null;
+try {
+    broadcastChannel = new BroadcastChannel('hedef4_online_sync');
+} catch (e) {}
+
 // ==============================================================================
-// 2. DOM ELEMANLARI
+// 3. DOM ELEMANLARI
 // ==============================================================================
-// Tema Butonu
+// Tema
 const themeToggleBtn = document.getElementById('themeToggleBtn');
 const themeIcon = document.getElementById('themeIcon');
 const themeLabel = document.getElementById('themeLabel');
 
-// Ekranlar ve Form
+// Lobi & Ekranlar
 const introScreen = document.getElementById('introScreen');
 const gameContainer = document.getElementById('gameContainer');
-const playerForm = document.getElementById('playerForm');
-const player1Input = document.getElementById('player1Input');
-const player2Input = document.getElementById('player2Input');
-const btnStartGame = document.getElementById('btnStartGame');
-const btnChangePlayers = document.getElementById('btnChangePlayers');
+const playerNameInput = document.getElementById('playerNameInput');
+const btnCreateRoom = document.getElementById('btnCreateRoom');
+const joinRoomCodeInput = document.getElementById('joinRoomCodeInput');
+const btnJoinRoom = document.getElementById('btnJoinRoom');
+const btnPlayLocalMode = document.getElementById('btnPlayLocalMode');
 
-// Oyun Tahtası ve Göstergeler
+// Bekleme Modali
+const waitingModal = document.getElementById('waitingModal');
+const displayRoomCode = document.getElementById('displayRoomCode');
+const btnCopyRoomCode = document.getElementById('btnCopyRoomCode');
+const copyIcon = document.getElementById('copyIcon');
+const copyText = document.getElementById('copyText');
+const btnCancelWaiting = document.getElementById('btnCancelWaiting');
+
+// Online Çubuk
+const onlineBar = document.getElementById('onlineBar');
+const activeRoomCodeText = document.getElementById('activeRoomCodeText');
+const btnCopyActiveRoom = document.getElementById('btnCopyActiveRoom');
+const roleDot = document.getElementById('roleDot');
+const roleText = document.getElementById('roleText');
+const opponentOverlay = document.getElementById('opponentOverlay');
+
+// Bildirim Modali
+const alertModal = document.getElementById('alertModal');
+const alertIcon = document.getElementById('alertIcon');
+const alertTitle = document.getElementById('alertTitle');
+const alertMessage = document.getElementById('alertMessage');
+const btnAlertOk = document.getElementById('btnAlertOk');
+
+// Tahta & Paneller
 const boardElement = document.getElementById('board');
 const dropPreviewElement = document.getElementById('dropPreview');
 const statusPanel = document.getElementById('statusPanel');
@@ -95,34 +172,23 @@ const scoreTiesElement = document.getElementById('scoreTies');
 const scoreCardRed = document.getElementById('scoreCardRed');
 const scoreCardYellow = document.getElementById('scoreCardYellow');
 const btnResetScores = document.getElementById('btnResetScores');
-const btnResetScoresLobby = document.getElementById('btnResetScoresLobby');
 
-// Alt Kontrol Butonları
+// Alt Butonlar
 const btnUndo = document.getElementById('btnUndo');
 const btnRestart = document.getElementById('btnRestart');
+const btnChangePlayers = document.getElementById('btnChangePlayers');
 const btnSound = document.getElementById('btnSound');
 const soundIcon = document.getElementById('soundIcon');
 
 // ==============================================================================
-// 3. TEMA YÖNETİMİ (GECE / GÜNDÜZ MODU)
+// 4. TEMA VE YEREL VERİ YÖNETİMİ
 // ==============================================================================
-
-/**
- * Temayı başlatır ve LocalStorage'dan tercihi yükler.
- */
 function initTheme() {
-    const savedTheme = localStorage.getItem('c4_theme');
-    if (savedTheme === 'light' || savedTheme === 'dark') {
-        currentTheme = savedTheme;
-    } else {
-        currentTheme = 'dark'; // Varsayılan: Koyu tema
-    }
+    const savedTheme = localStorage.getItem('c4_theme') || 'dark';
+    currentTheme = savedTheme;
     applyTheme(currentTheme);
 }
 
-/**
- * Temayı sayfaya uygular ve buton etiketlerini günceller.
- */
 function applyTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
     if (theme === 'dark') {
@@ -136,45 +202,24 @@ function applyTheme(theme) {
     }
 }
 
-/**
- * Tema butonuna basıldığında temayı değiştirir ve LocalStorage'a kaydeder.
- */
 function toggleTheme() {
     currentTheme = (currentTheme === 'dark') ? 'light' : 'dark';
     applyTheme(currentTheme);
-    try {
-        localStorage.setItem('c4_theme', currentTheme);
-    } catch (e) {}
+    try { localStorage.setItem('c4_theme', currentTheme); } catch (e) {}
     playBeepSound(500, 0.05);
 }
 
-// ==============================================================================
-// 4. GİRİŞ EKRANI VE LOCALSTORAGE (KALICILIK)
-// ==============================================================================
-
-// Eski isim cache'ini kesinlikle temizle (Otomatik isim doldurmayı önler)
-try {
-    localStorage.removeItem('c4_players');
-} catch (e) {}
-
-/**
- * LocalStorage'dan sadece skorları yükler.
- * ÖNEMLİ: Oyuncu isim kutucuklarına (input) localStorage'dan otomatik doldurma YAPILMAZ!
- * Kutucuklar her zaman tamamen boş başlar.
- */
 function loadPreferences() {
-    // Giriş ekranı input alanlarını kesinlikle BOŞ bırak
-    if (player1Input) player1Input.value = '';
-    if (player2Input) player2Input.value = '';
+    if (playerNameInput) playerNameInput.value = '';
+    if (joinRoomCodeInput) joinRoomCodeInput.value = '';
 
     try {
-        // Yalnızca skorları yükle
         const savedScores = localStorage.getItem('c4_scores');
         if (savedScores) {
-            const parsedScores = JSON.parse(savedScores);
-            scores[PLAYER_RED] = Number(parsedScores.red) || 0;
-            scores[PLAYER_YELLOW] = Number(parsedScores.yellow) || 0;
-            scores.ties = Number(parsedScores.ties) || 0;
+            const parsed = JSON.parse(savedScores);
+            scores[PLAYER_RED] = Number(parsed.red) || 0;
+            scores[PLAYER_YELLOW] = Number(parsed.yellow) || 0;
+            scores.ties = Number(parsed.ties) || 0;
         }
     } catch (e) {}
 
@@ -182,97 +227,459 @@ function loadPreferences() {
     updateScoreDisplays();
 }
 
-/**
- * Skorları LocalStorage'a kaydeder.
- */
 function savePreferences() {
     try {
         localStorage.setItem('c4_scores', JSON.stringify(scores));
     } catch (e) {}
 }
 
-/**
- * Skor kartlarındaki isimleri günceller.
- */
 function updateScoreNames() {
     scoreNameRed.textContent = playerNames[PLAYER_RED];
     scoreNameYellow.textContent = playerNames[PLAYER_YELLOW];
 }
 
-/**
- * Kayıtlı tüm skorları sıfırlar.
- */
+function updateScoreDisplays() {
+    scoreRedElement.textContent = scores[PLAYER_RED];
+    scoreYellowElement.textContent = scores[PLAYER_YELLOW];
+    scoreTiesElement.textContent = scores.ties;
+}
+
 function resetAllScores() {
-    if (!confirm('Tüm kayıtlı skorları sıfırlamak istediğinize emin misiniz?')) {
-        return;
-    }
+    if (!confirm('Tüm kayıtlı skorları sıfırlamak istediğinize emin misiniz?')) return;
 
     scores = { [PLAYER_RED]: 0, [PLAYER_YELLOW]: 0, ties: 0 };
-    playerNames = { [PLAYER_RED]: '1. Oyuncu', [PLAYER_YELLOW]: '2. Oyuncu' };
-
-    if (player1Input) player1Input.value = '';
-    if (player2Input) player2Input.value = '';
-
-    try {
-        localStorage.removeItem('c4_scores');
-        localStorage.removeItem('c4_players');
-    } catch (e) {}
-
-    updateScoreNames();
     updateScoreDisplays();
-    updateStatusDisplay();
+    savePreferences();
+
+    // Online odadaysa veritabanındaki skorları da sıfırla
+    if (isOnlineGame && currentRoomId) {
+        updateRemoteRoom({ scores: scores });
+    }
 
     playBeepSound(350, 0.12);
 }
 
+// ==============================================================================
+// 5. ÇOK OYUNCULU ODA SİSTEMİ (HOST & JOIN LOBBY)
+// ==============================================================================
+
 /**
- * Giriş ekranından oyuna geçiş.
- * Kullanıcı isim kutucuklarını boş bırakırsa otomatik olarak "1. Oyuncu" ve "2. Oyuncu" atanır.
+ * 4-6 haneli rastgele alfasayısal oda kodu üretir (Örn: H4-729)
  */
-function handleStartGame() {
-    const p1Name = (player1Input && player1Input.value.trim()) || '1. Oyuncu';
-    const p2Name = (player2Input && player2Input.value.trim()) || '2. Oyuncu';
+function generateRoomCode() {
+    const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+    let code = 'H4-';
+    for (let i = 0; i < 3; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+}
 
-    playerNames[PLAYER_RED] = p1Name;
-    playerNames[PLAYER_YELLOW] = p2Name;
+/**
+ * 1. SEÇENEK: YENİ ODA KUR (HOST - KIRMIZI OYUNCU)
+ */
+function handleCreateRoom() {
+    const myName = (playerNameInput.value.trim()) || 'Kırmızı Oyuncu';
+    currentRoomId = generateRoomCode();
+    myPlayerRole = PLAYER_RED;
+    isOnlineGame = true;
 
-    updateScoreNames();
-    savePreferences();
+    playerNames[PLAYER_RED] = myName;
+    playerNames[PLAYER_YELLOW] = 'Rakip Bekleniyor...';
 
-    // Animasyonlu Geçiş (Fade-Out -> Fade-In)
+    // Başlangıç oda verisi
+    const initialRoomData = {
+        roomId: currentRoomId,
+        board: Array.from({ length: ROWS }, () => Array(COLS).fill(null)),
+        turn: PLAYER_RED,
+        turnStartTime: Date.now(),
+        status: 'waiting', // 'waiting' -> 'playing' -> 'won' | 'draw'
+        p1: { name: myName, color: PLAYER_RED, online: true },
+        p2: null,
+        scores: { red: 0, yellow: 0, ties: 0 },
+        lastMove: null,
+        winningCells: null,
+        winner: null
+    };
+
+    // Veritabanına odayı kaydet
+    createRemoteRoom(currentRoomId, initialRoomData);
+
+    // Bekleme modalini aç
+    displayRoomCode.textContent = currentRoomId;
+    waitingModal.classList.remove('hidden');
+
+    // Odayı anlık dinlemeye başla
+    listenToRoom(currentRoomId);
+}
+
+/**
+ * 2. SEÇENEK: ODAYA KATIL (JOIN - SARI OYUNCU)
+ */
+function handleJoinRoom() {
+    const code = joinRoomCodeInput.value.trim().toUpperCase();
+    if (!code) {
+        showAlert('Eksik Bilgi', 'Lütfen arkadaşınızın verdiği Oda Kodunu girin.');
+        return;
+    }
+
+    const myName = (playerNameInput.value.trim()) || 'Sarı Oyuncu';
+
+    // Odayı bul ve katıl
+    fetchRoomData(code, (roomData) => {
+        if (!roomData) {
+            showAlert('Oda Bulunamadı', `"${code}" kodlu bir oda bulunamadı. Lütfen kodu doğru yazdığınızdan emin olun.`);
+            return;
+        }
+
+        if (roomData.status !== 'waiting' && roomData.p2) {
+            showAlert('Oda Dolu', 'Bu oda zaten 2 kişilik bir oyuna başlamış.');
+            return;
+        }
+
+        currentRoomId = code;
+        myPlayerRole = PLAYER_YELLOW;
+        isOnlineGame = true;
+
+        playerNames[PLAYER_RED] = roomData.p1 ? roomData.p1.name : '1. Oyuncu';
+        playerNames[PLAYER_YELLOW] = myName;
+
+        // Odaya katılım güncellemesi
+        const updates = {
+            p2: { name: myName, color: PLAYER_YELLOW, online: true },
+            status: 'playing',
+            turnStartTime: Date.now()
+        };
+
+        updateRemoteRoom(updates);
+
+        // Dinlemeyi başlat ve oyun ekranına geç
+        listenToRoom(currentRoomId);
+        startGameView();
+    });
+}
+
+/**
+ * 3. SEÇENEK: AYNI CİHAZDA YEREL OYNA (OFFLINE MOD)
+ */
+function handlePlayLocalMode() {
+    isOnlineGame = false;
+    currentRoomId = null;
+    myPlayerRole = 'both';
+
+    playerNames[PLAYER_RED] = '1. Oyuncu (Kırmızı)';
+    playerNames[PLAYER_YELLOW] = '2. Oyuncu (Sarı)';
+
+    onlineBar.style.display = 'none';
+    startGameView();
+    initLocalGame();
+}
+
+/**
+ * Beklemeyi iptal et ve lobiye dön
+ */
+function cancelWaitingRoom() {
+    if (currentRoomId) {
+        deleteRemoteRoom(currentRoomId);
+    }
+    stopRoomListener();
+    waitingModal.classList.add('hidden');
+    currentRoomId = null;
+}
+
+/**
+ * Oyun arayüzünü açar
+ */
+function startGameView() {
+    waitingModal.classList.add('hidden');
     introScreen.classList.add('fade-out');
 
     setTimeout(() => {
         gameContainer.classList.remove('hidden');
         gameContainer.classList.add('fade-in');
 
-        initGame();
-        startTurnTimer();
+        if (isOnlineGame) {
+            onlineBar.style.display = 'flex';
+            activeRoomCodeText.textContent = currentRoomId;
+            updateMyRoleBadge();
+        } else {
+            onlineBar.style.display = 'none';
+        }
     }, 350);
 }
 
 /**
- * Giriş ekranına geri dönüş.
- * Kutucuklar her zaman boş açılarak sadece yer tutucular (placeholder) görünür.
+ * Rol rozetini günceller (🔴 Kırmızı / 🟡 Sarı)
  */
-function returnToIntroScreen() {
+function updateMyRoleBadge() {
+    if (myPlayerRole === PLAYER_RED) {
+        roleDot.className = 'role-dot red';
+        roleText.textContent = 'Rolünüz: 🔴 1. Oyuncu (Kırmızı)';
+    } else if (myPlayerRole === PLAYER_YELLOW) {
+        roleDot.className = 'role-dot yellow';
+        roleText.textContent = 'Rolünüz: 🟡 2. Oyuncu (Sarı)';
+    } else {
+        roleDot.className = 'role-dot';
+        roleText.textContent = 'Mod: Yerel Oyun';
+    }
+}
+
+/**
+ * Oyundan çıkıp lobiye döner
+ */
+function leaveRoomAndReturnToLobby() {
+    if (isOnlineGame && currentRoomId) {
+        // Terk etme uyarısı gönder
+        updateRemoteRoom({ status: 'abandoned', abandonedBy: myPlayerRole });
+        deleteRemoteRoom(currentRoomId);
+    }
+
+    stopRoomListener();
     stopTurnTimer();
+
+    currentRoomId = null;
+    isOnlineGame = false;
+    myPlayerRole = 'both';
+
     gameContainer.classList.add('hidden');
     gameContainer.classList.remove('fade-in');
-
     introScreen.classList.remove('fade-out');
-    
-    // Kutucukları kesinlikle boşalt
-    if (player1Input) player1Input.value = '';
-    if (player2Input) player2Input.value = '';
-    if (player1Input) player1Input.focus();
+
+    if (playerNameInput) playerNameInput.value = '';
+    if (joinRoomCodeInput) joinRoomCodeInput.value = '';
 }
 
 // ==============================================================================
-// 5. 15 SANİYELİK HAMLE ZAMANLAYICISI (TURN TIMER)
+// 6. GERÇEK ZAMANLI VERİ SENKRONİZASYONU (FIREBASE RTDB & HİBRİT KÖPRÜ)
 // ==============================================================================
 
-function startTurnTimer() {
+function createRemoteRoom(roomId, data) {
+    if (isFirebaseConfigured && rtdb) {
+        const ref = rtdb.ref('games/' + roomId);
+        ref.set(data);
+        // Sekme kapatılırsa odayı otomatik temizle / terk et bildir
+        ref.onDisconnect().update({ status: 'abandoned', abandonedBy: PLAYER_RED });
+    } else {
+        // Hibrit Yerel Ağ / Sekme Köprüsü
+        try {
+            localStorage.setItem('c4_room_' + roomId, JSON.stringify(data));
+            if (broadcastChannel) {
+                broadcastChannel.postMessage({ type: 'ROOM_CREATED', roomId, data });
+            }
+        } catch (e) {}
+    }
+}
+
+function updateRemoteRoom(updates) {
+    if (!currentRoomId) return;
+
+    if (isFirebaseConfigured && rtdb) {
+        rtdb.ref('games/' + currentRoomId).update(updates);
+    } else {
+        // Yerel köprü
+        try {
+            const raw = localStorage.getItem('c4_room_' + currentRoomId);
+            if (raw) {
+                const current = JSON.parse(raw);
+                const updated = Object.assign({}, current, updates);
+                localStorage.setItem('c4_room_' + currentRoomId, JSON.stringify(updated));
+                if (broadcastChannel) {
+                    broadcastChannel.postMessage({ type: 'ROOM_UPDATED', roomId: currentRoomId, updates: updated });
+                }
+            }
+        } catch (e) {}
+    }
+}
+
+function fetchRoomData(roomId, callback) {
+    if (isFirebaseConfigured && rtdb) {
+        rtdb.ref('games/' + roomId).once('value').then(snapshot => {
+            callback(snapshot.val());
+        }).catch(() => callback(null));
+    } else {
+        try {
+            const raw = localStorage.getItem('c4_room_' + roomId);
+            callback(raw ? JSON.parse(raw) : null);
+        } catch (e) {
+            callback(null);
+        }
+    }
+}
+
+function deleteRemoteRoom(roomId) {
+    if (isFirebaseConfigured && rtdb) {
+        rtdb.ref('games/' + roomId).remove();
+    } else {
+        try {
+            localStorage.removeItem('c4_room_' + roomId);
+            if (broadcastChannel) {
+                broadcastChannel.postMessage({ type: 'ROOM_DELETED', roomId });
+            }
+        } catch (e) {}
+    }
+}
+
+/**
+ * Odayı anlık dinler (Firebase onValue & BroadcastChannel köprüsü)
+ */
+function listenToRoom(roomId) {
+    stopRoomListener();
+
+    if (isFirebaseConfigured && rtdb) {
+        roomRef = rtdb.ref('games/' + roomId);
+        const onValueChange = roomRef.on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data) handleRoomStateUpdate(data);
+        });
+        roomUnsubscribe = () => roomRef.off('value', onValueChange);
+    } else {
+        // BroadcastChannel Dinleyicisi
+        if (broadcastChannel) {
+            const handler = (event) => {
+                const msg = event.data;
+                if (!msg || msg.roomId !== roomId) return;
+
+                if (msg.type === 'ROOM_UPDATED' && msg.updates) {
+                    handleRoomStateUpdate(msg.updates);
+                } else if (msg.type === 'ROOM_DELETED') {
+                    handleRoomAbandoned();
+                }
+            };
+            broadcastChannel.addEventListener('message', handler);
+            roomUnsubscribe = () => broadcastChannel.removeEventListener('message', handler);
+        }
+
+        // Sekmeler arası storage event dinleyicisi
+        const storageHandler = (e) => {
+            if (e.key === 'c4_room_' + roomId && e.newValue) {
+                handleRoomStateUpdate(JSON.parse(e.newValue));
+            }
+        };
+        window.addEventListener('storage', storageHandler);
+        const prevUnsub = roomUnsubscribe;
+        roomUnsubscribe = () => {
+            if (prevUnsub) prevUnsub();
+            window.removeEventListener('storage', storageHandler);
+        };
+    }
+}
+
+function stopRoomListener() {
+    if (roomUnsubscribe) {
+        roomUnsubscribe();
+        roomUnsubscribe = null;
+    }
+}
+
+/**
+ * Veritabanından gelen anlık oda durumu ile istemciyi eşitler.
+ */
+function handleRoomStateUpdate(data) {
+    if (!data) return;
+
+    // 1. Oyuncu İsimleri ve Skorlar
+    if (data.p1) playerNames[PLAYER_RED] = data.p1.name;
+    if (data.p2) playerNames[PLAYER_YELLOW] = data.p2.name;
+    updateScoreNames();
+
+    if (data.scores) {
+        scores[PLAYER_RED] = data.scores.red || 0;
+        scores[PLAYER_YELLOW] = data.scores.yellow || 0;
+        scores.ties = data.scores.ties || 0;
+        updateScoreDisplays();
+    }
+
+    // 2. İkinci oyuncu katıldı ve maç başladıysa
+    if (data.status === 'playing' && !waitingModal.classList.contains('hidden')) {
+        startGameView();
+        createBoardDOM();
+        createPreviewSlots();
+    }
+
+    // 3. Bağlantı Kopması / Terk Edilme Durumu
+    if (data.status === 'abandoned') {
+        handleRoomAbandoned(data.abandonedBy);
+        return;
+    }
+
+    // 4. Tahta ve Son Hamle Senkronizasyonu
+    if (data.board) {
+        // Eğer tahtada yerel matrise göre yeni bir taş varsa görsel düşüşü tetikle
+        if (data.lastMove) {
+            const { row, col, player } = data.lastMove;
+            if (boardState[row] && boardState[row][col] !== player) {
+                executeVisualDrop(row, col, player);
+            }
+        }
+        boardState = data.board;
+    }
+
+    // 5. Sıra ve Kilit Durumu
+    currentPlayer = data.turn || PLAYER_RED;
+    updateStatusDisplay();
+    updateScoreCardHighlight();
+    updateTurnLock();
+
+    // 6. Senkronize 15 Saniyelik Zamanlayıcı (Timestamp Bazlı)
+    if (data.turnStartTime && data.status === 'playing') {
+        syncTimerWithTimestamp(data.turnStartTime);
+    }
+
+    // 7. Kazanma veya Beraberlik Durumu
+    if (data.status === 'won' && data.winningCells && !isGameOver) {
+        applyRemoteWin(data.winningCells, data.winner);
+    } else if (data.status === 'draw' && !isGameOver) {
+        applyRemoteDraw();
+    }
+}
+
+/**
+ * Rakip oyundan ayrıldığında bildirim gösterir
+ */
+function handleRoomAbandoned(abandonedBy) {
+    stopTurnTimer();
+    isGameOver = true;
+
+    const quitterName = (abandonedBy === myPlayerRole) ? 'Siz' : 'Rakip';
+    if (abandonedBy !== myPlayerRole) {
+        showAlert('🎉 Tebrikler! Hükmen Kazandınız', 'Rakip oyundan ayrıldı veya bağlantısı koptu. Maçı siz kazandınız!', () => {
+            leaveRoomAndReturnToLobby();
+        });
+        playWinArpeggio();
+    } else {
+        leaveRoomAndReturnToLobby();
+    }
+}
+
+// ==============================================================================
+// 7. GÜVENLİK, SIRA KİLİDİ VE SENKRON ZAMANLAYICI
+// ==============================================================================
+
+/**
+ * Sıra rakipteyken tahtaya tıklamayı engeller ve bekleme rozetini gösterir.
+ */
+function updateTurnLock() {
+    if (!isOnlineGame) {
+        opponentOverlay.classList.add('hidden');
+        return;
+    }
+
+    const isMyTurn = (myPlayerRole === currentPlayer) && !isGameOver;
+
+    if (isMyTurn) {
+        opponentOverlay.classList.add('hidden');
+    } else {
+        opponentOverlay.classList.remove('hidden');
+    }
+
+    updatePreviewState();
+}
+
+/**
+ * 15 saniyelik zamanlayıcıyı sunucu zaman damgasına göre (timestamp) eşitler.
+ * Her iki cihazda da salise farkı olmadan aynı saniyeyi gösterir!
+ */
+function syncTimerWithTimestamp(startTime) {
     stopTurnTimer();
 
     if (isGameOver) {
@@ -281,23 +688,42 @@ function startTurnTimer() {
     }
 
     turnTimer.classList.remove('hidden');
-    timeLeft = TURN_TIME_LIMIT;
-    updateTimerUI();
 
-    timerInterval = setInterval(() => {
-        timeLeft--;
-        updateTimerUI();
+    function tick() {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        currentRemainingSeconds = Math.max(0, TURN_TIME_LIMIT - elapsed);
 
-        // Son 5 saniyede hafif uyarı sesi
-        if (timeLeft <= 5 && timeLeft > 0) {
-            playBeepSound(520, 0.04);
+        timerNumber.textContent = currentRemainingSeconds;
+
+        const totalCircumference = 100;
+        const progressOffset = totalCircumference - (currentRemainingSeconds / TURN_TIME_LIMIT) * totalCircumference;
+        timerRingProgress.style.strokeDashoffset = progressOffset;
+
+        turnTimer.classList.toggle('urgent', currentRemainingSeconds <= 5);
+
+        // Son 5 saniye uyarısı
+        if (currentRemainingSeconds <= 5 && currentRemainingSeconds > 0) {
+            playBeepSound(520, 0.03);
         }
 
-        // Süre dolduğunda sıra otomatik geçer
-        if (timeLeft <= 0) {
-            handleTimeOut();
+        // Süre Doldu! Sırayı otomatik devret (Oda kurucu veya sırası olan yazar)
+        if (currentRemainingSeconds <= 0) {
+            stopTurnTimer();
+            playTimeoutBuzzer();
+
+            // Çift yazmayı önlemek için yalnızca sırası olan taraf veya host devretsin
+            if (myPlayerRole === currentPlayer || myPlayerRole === PLAYER_RED) {
+                const nextTurn = (currentPlayer === PLAYER_RED) ? PLAYER_YELLOW : PLAYER_RED;
+                updateRemoteRoom({
+                    turn: nextTurn,
+                    turnStartTime: Date.now()
+                });
+            }
         }
-    }, 1000);
+    }
+
+    tick();
+    timerInterval = setInterval(tick, 1000);
 }
 
 function stopTurnTimer() {
@@ -307,36 +733,13 @@ function stopTurnTimer() {
     }
 }
 
-function updateTimerUI() {
-    timerNumber.textContent = timeLeft;
-
-    const totalCircumference = 100;
-    const progressOffset = totalCircumference - (timeLeft / TURN_TIME_LIMIT) * totalCircumference;
-    timerRingProgress.style.strokeDashoffset = progressOffset;
-
-    turnTimer.classList.toggle('urgent', timeLeft <= 5);
-}
-
-function handleTimeOut() {
-    stopTurnTimer();
-    playTimeoutBuzzer(); // Süre dolma uyarı sesi
-
-    const timedOutPlayer = playerNames[currentPlayer];
-    switchTurn();
-
-    const nextPlayer = playerNames[currentPlayer];
-    statusText.textContent = `⏳ ${timedOutPlayer}'in süresi doldu! Sıra ${nextPlayer}'de`;
-
-    startTurnTimer();
-}
-
 // ==============================================================================
-// 6. OYUNU BAŞLATMA (INIT)
+// 8. OYUN TAHTASI VE HAMLE MOTORU (ONLINE & LOCAL)
 // ==============================================================================
-function initGame() {
+
+function initLocalGame() {
     boardState = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
-    moveHistory = []; // Hamle geçmişini sıfırla
-    
+    moveHistory = [];
     currentPlayer = PLAYER_RED;
     isGameOver = false;
     isAnimating = false;
@@ -344,15 +747,14 @@ function initGame() {
 
     document.documentElement.style.setProperty('--rows', ROWS);
     document.documentElement.style.setProperty('--cols', COLS);
-
     boardElement.classList.remove('has-winner');
 
     createBoardDOM();
     createPreviewSlots();
     updateStatusDisplay();
     updateScoreCardHighlight();
-    updateScoreDisplays();
-    updateUndoButtonState();
+    updateTurnLock();
+    startLocalTurnTimer();
 }
 
 function createBoardDOM() {
@@ -395,12 +797,17 @@ function createPreviewSlots() {
     }
 }
 
-// ==============================================================================
-// 7. HAMLE YAPMA VE YERÇEKİMİ MEKANİZMASI (GRAVITY)
-// ==============================================================================
-
+/**
+ * Tıklama yapıldığında sıra kontrolü ve hamle icrası
+ */
 function handleColumnClick(col) {
     if (isGameOver || isAnimating) return;
+
+    // Online oyunda sıra kontrolü: Sadece kendi sırası gelen hamle yapabilir!
+    if (isOnlineGame && myPlayerRole !== currentPlayer) {
+        playBeepSound(180, 0.08);
+        return;
+    }
 
     const emptyRow = getLowestEmptyRow(col);
     if (emptyRow === -1) {
@@ -408,221 +815,149 @@ function handleColumnClick(col) {
         return;
     }
 
-    stopTurnTimer();
-    executeMove(emptyRow, col);
+    if (isOnlineGame) {
+        // Hamleyi gerçekleştir ve veritabanına gönder
+        executeOnlineMove(emptyRow, col);
+    } else {
+        // Klasik yerel hamle
+        executeLocalMove(emptyRow, col);
+    }
 }
 
 function getLowestEmptyRow(col) {
     for (let r = ROWS - 1; r >= 0; r--) {
-        if (boardState[r][col] === null) {
+        if (!boardState[r] || boardState[r][col] === null) {
             return r;
         }
     }
     return -1;
 }
 
-function executeMove(row, col) {
+/**
+ * Online Hamleyi veritabanına yazar
+ */
+function executeOnlineMove(row, col) {
     isAnimating = true;
 
-    // Matriste durumu güncelle
+    const movingPlayer = currentPlayer;
+    const nextPlayer = (movingPlayer === PLAYER_RED) ? PLAYER_YELLOW : PLAYER_RED;
+
+    // Matriste güncelle
+    boardState[row][col] = movingPlayer;
+
+    // Görsel düşüşü bu ekranda da göster
+    executeVisualDrop(row, col, movingPlayer);
+
+    // Kazanma / Beraberlik kontrolü
+    const winningCells = checkWin(boardState, row, col);
+    const isDraw = !winningCells && checkDraw(boardState);
+
+    setTimeout(() => {
+        isAnimating = false;
+
+        const updates = {
+            board: boardState,
+            lastMove: { row, col, player: movingPlayer },
+            turn: nextPlayer,
+            turnStartTime: Date.now()
+        };
+
+        if (winningCells) {
+            updates.status = 'won';
+            updates.winner = movingPlayer;
+            updates.winningCells = winningCells;
+            updates.scores = {
+                red: scores[PLAYER_RED] + (movingPlayer === PLAYER_RED ? 1 : 0),
+                yellow: scores[PLAYER_YELLOW] + (movingPlayer === PLAYER_YELLOW ? 1 : 0),
+                ties: scores.ties
+            };
+        } else if (isDraw) {
+            updates.status = 'draw';
+            updates.scores = {
+                red: scores[PLAYER_RED],
+                yellow: scores[PLAYER_YELLOW],
+                ties: scores.ties + 1
+            };
+        }
+
+        updateRemoteRoom(updates);
+    }, 450);
+}
+
+/**
+ * Yerel Hamle İcrası
+ */
+function executeLocalMove(row, col) {
+    isAnimating = true;
+    stopTurnTimer();
+
     boardState[row][col] = currentPlayer;
+    executeVisualDrop(row, col, currentPlayer);
 
-    // Hamleyi yığına (stack) kaydet
-    moveHistory.push({
-        row,
-        col,
-        player: currentPlayer,
-        wasWinningMove: false
-    });
-    updateUndoButtonState();
+    setTimeout(() => {
+        isAnimating = false;
 
+        const winningCombination = checkWin(boardState, row, col);
+        if (winningCombination) {
+            applyRemoteWin(winningCombination, currentPlayer);
+            return;
+        }
+
+        if (checkDraw(boardState)) {
+            applyRemoteDraw();
+            return;
+        }
+
+        currentPlayer = (currentPlayer === PLAYER_RED) ? PLAYER_YELLOW : PLAYER_RED;
+        updateStatusDisplay();
+        updateScoreCardHighlight();
+        updatePreviewState();
+        startLocalTurnTimer();
+    }, 450);
+}
+
+function startLocalTurnTimer() {
+    syncTimerWithTimestamp(Date.now());
+}
+
+/**
+ * Taşın tahtaya yukarıdan fiziksel düşüş animasyonu
+ */
+function executeVisualDrop(row, col, player) {
     const cell = getCellElement(row, col);
     if (!cell) return;
 
+    // Hücrede zaten taş varsa tekrar ekleme
+    if (cell.querySelector('.disc')) return;
+
     const disc = document.createElement('div');
-    disc.classList.add('disc', currentPlayer, 'dropping');
+    disc.classList.add('disc', player, 'dropping');
 
     const cellHeight = cell.offsetHeight || 60;
     const dropDistance = (row + 1.2) * (cellHeight + 10);
     disc.style.setProperty('--drop-distance', `${dropDistance}px`);
 
     cell.appendChild(disc);
-    playDropPopSound(row); // Tok pop/tık sesi
+    playDropPopSound(row);
 
     setTimeout(() => {
         disc.classList.remove('dropping');
-        isAnimating = false;
-        updateUndoButtonState();
-
-        // 1. Kazanma Kontrolü
-        const winningCombination = checkWin(boardState, row, col);
-        if (winningCombination) {
-            moveHistory[moveHistory.length - 1].wasWinningMove = true;
-            handleWin(winningCombination);
-            return;
-        }
-
-        // 2. Beraberlik Kontrolü
-        if (checkDraw(boardState)) {
-            handleDraw();
-            return;
-        }
-
-        // 3. Sırayı diğer oyuncuya devret
-        switchTurn();
-        updatePreviewState();
-        startTurnTimer();
     }, 450);
 }
 
-function switchTurn() {
-    currentPlayer = (currentPlayer === PLAYER_RED) ? PLAYER_YELLOW : PLAYER_RED;
-    updateStatusDisplay();
-    updateScoreCardHighlight();
-}
-
-// ==============================================================================
-// 8. HAMLEYİ GERİ AL (UNDO) ÖZELLİĞİ
-// ==============================================================================
-
 /**
- * Son yapılan hamleyi yığından çıkarır ve tahtadan temizler.
+ * Kazanma efekti ve zafer ekranı senkronu
  */
-function undoMove() {
-    if (moveHistory.length === 0 || isAnimating) return;
-
-    isAnimating = true;
-    stopTurnTimer();
-
-    const lastMove = moveHistory.pop();
-    const { row, col, player, wasWinningMove } = lastMove;
-
-    // Matristeki hücreyi boşalt
-    boardState[row][col] = null;
-
-    // DOM'daki taşı animasyonla kaldır
-    const cell = getCellElement(row, col);
-    if (cell) {
-        const disc = cell.querySelector('.disc');
-        if (disc) {
-            disc.classList.add('undoing');
-            setTimeout(() => {
-                if (disc.parentNode) disc.parentNode.removeChild(disc);
-                isAnimating = false;
-                updateUndoButtonState();
-            }, 250);
-        } else {
-            isAnimating = false;
-            updateUndoButtonState();
-        }
-    } else {
-        isAnimating = false;
-        updateUndoButtonState();
-    }
-
-    // Geri alma sesini çal
-    playUndoSound();
-
-    // Eğer son hamle kazanma hamlesi idiyse kazanma durumunu geri al
-    if (wasWinningMove || isGameOver) {
-        isGameOver = false;
-        boardElement.classList.remove('has-winner');
-
-        // Hücrelerden kazanma sınıflarını temizle
-        document.querySelectorAll('.cell.winner').forEach(wCell => {
-            wCell.classList.remove('winner');
-            wCell.style.removeProperty('--winner-glow');
-        });
-
-        // Skoru 1 eksilt ve kaydet
-        if (scores[player] > 0) {
-            scores[player]--;
-            updateScoreDisplays();
-            savePreferences();
-        }
-    }
-
-    // Sırayı son hamleyi yapan oyuncuya geri ver
-    currentPlayer = player;
-
-    // Arayüzü güncelle ve zamanlayıcıyı 15 saniyeye sıfırla
-    updateStatusDisplay();
-    updateScoreCardHighlight();
-    updatePreviewState();
-    startTurnTimer();
-}
-
-/**
- * Geri al butonunun tıklanabilir durumunu günceller.
- */
-function updateUndoButtonState() {
-    btnUndo.disabled = (moveHistory.length === 0 || isAnimating);
-}
-
-// ==============================================================================
-// 9. KAZANMA VE BERABERLİK KONTROL ALGORİTMALARI
-// ==============================================================================
-
-function checkWin(board, r, c) {
-    const player = board[r][c];
-    if (!player) return null;
-
-    const directions = [
-        { dr: 0,  dc: 1 },  // Yatay
-        { dr: 1,  dc: 0 },  // Dikey
-        { dr: 1,  dc: 1 },  // Çapraz (\)
-        { dr: -1, dc: 1 }   // Çapraz (/)
-    ];
-
-    for (let { dr, dc } of directions) {
-        let matchedCells = [{ r, c }];
-
-        // Pozitif yön
-        let step = 1;
-        while (true) {
-            const nr = r + dr * step;
-            const nc = c + dc * step;
-            if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && board[nr][nc] === player) {
-                matchedCells.push({ r: nr, c: nc });
-                step++;
-            } else break;
-        }
-
-        // Negatif yön
-        step = 1;
-        while (true) {
-            const nr = r - dr * step;
-            const nc = c - dc * step;
-            if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && board[nr][nc] === player) {
-                matchedCells.push({ r: nr, c: nc });
-                step++;
-            } else break;
-        }
-
-        if (matchedCells.length >= WIN_COUNT) {
-            return matchedCells;
-        }
-    }
-
-    return null;
-}
-
-function checkDraw(board) {
-    for (let c = 0; c < COLS; c++) {
-        if (board[0][c] === null) return false;
-    }
-    return true;
-}
-
-function handleWin(winningCells) {
+function applyRemoteWin(winningCells, winner) {
     isGameOver = true;
     stopTurnTimer();
     turnTimer.classList.add('hidden');
+    opponentOverlay.classList.add('hidden');
 
     boardElement.classList.add('has-winner');
 
-    const winnerGlowColor = (currentPlayer === PLAYER_RED) 
-        ? 'rgba(239, 68, 68, 0.95)' 
+    const winnerGlowColor = (winner === PLAYER_RED)
+        ? 'rgba(239, 68, 68, 0.95)'
         : 'rgba(234, 179, 8, 0.95)';
 
     winningCells.forEach(({ r, c }) => {
@@ -633,28 +968,31 @@ function handleWin(winningCells) {
         }
     });
 
-    scores[currentPlayer]++;
-    updateScoreDisplays();
-    savePreferences();
+    const winnerName = playerNames[winner];
+    const colorTag = (winner === PLAYER_RED) ? 'Kırmızı' : 'Sarı';
 
-    const winnerName = playerNames[currentPlayer];
-    const colorTag = (currentPlayer === PLAYER_RED) ? 'Kırmızı' : 'Sarı';
-    statusText.textContent = `🎉 Tebrikler! ${winnerName} (${colorTag}) Kazandı!`;
-    statusPanel.className = `status-panel win-${currentPlayer}`;
+    if (isOnlineGame) {
+        if (winner === myPlayerRole) {
+            statusText.textContent = `🏆 TEBRİKLER! OYUNU SİZ KAZANDINIZ!`;
+            playWinArpeggio();
+        } else {
+            statusText.textContent = `😔 ${winnerName} (${colorTag}) Kazandı!`;
+            playBeepSound(260, 0.3);
+        }
+    } else {
+        statusText.textContent = `🎉 Tebrikler! ${winnerName} (${colorTag}) Kazandı!`;
+        playWinArpeggio();
+    }
 
-    playWinArpeggio(); // Neşeli arpej melodisi
+    statusPanel.className = `status-panel win-${winner}`;
     clearColumnHover();
-    updateUndoButtonState();
 }
 
-function handleDraw() {
+function applyRemoteDraw() {
     isGameOver = true;
     stopTurnTimer();
     turnTimer.classList.add('hidden');
-
-    scores.ties++;
-    updateScoreDisplays();
-    savePreferences();
+    opponentOverlay.classList.add('hidden');
 
     statusText.textContent = `🤝 Oyun Berabere Bitti!`;
     statusPanel.className = 'status-panel draw';
@@ -662,12 +1000,60 @@ function handleDraw() {
 
     playBeepSound(300, 0.25);
     clearColumnHover();
-    updateUndoButtonState();
 }
 
-// ==============================================================================
-// 10. ARAYÜZ (UI) GÜNCELLEMELERİ VE YARDIMCILAR
-// ==============================================================================
+/**
+ * 4'lü Kazanma Algoritması
+ */
+function checkWin(board, r, c) {
+    const player = board[r][c];
+    if (!player) return null;
+
+    const directions = [
+        { dr: 0, dc: 1 },
+        { dr: 1, dc: 0 },
+        { dr: 1, dc: 1 },
+        { dr: -1, dc: 1 }
+    ];
+
+    for (let { dr, dc } of directions) {
+        let matchedCells = [{ r, c }];
+
+        let step = 1;
+        while (true) {
+            const nr = r + dr * step;
+            const nc = c + dc * step;
+            if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && board[nr][nc] === player) {
+                matchedCells.push({ r: nr, c: nc });
+                step++;
+            } else break;
+        }
+
+        step = 1;
+        while (true) {
+            const nr = r - dr * step;
+            const nc = c - dc * step;
+            if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && board[nr][nc] === player) {
+                matchedCells.push({ r: nr, c: nc });
+                step++;
+            } else break;
+        }
+
+        if (matchedCells.length >= WIN_COUNT) return matchedCells;
+    }
+    return null;
+}
+
+function checkDraw(board) {
+    for (let c = 0; c < COLS; c++) {
+        if (!board[0] || board[0][c] === null) return false;
+    }
+    return true;
+}
+
+function getCellElement(row, col) {
+    return document.querySelector(`.cell[data-row="${row}"][data-col="${col}"]`);
+}
 
 function updateStatusDisplay() {
     if (isGameOver) return;
@@ -675,15 +1061,19 @@ function updateStatusDisplay() {
     statusDisc.style.display = 'inline-block';
     const currentName = playerNames[currentPlayer];
 
-    if (currentPlayer === PLAYER_RED) {
-        statusText.textContent = `Sıra ${currentName}'de (Kırmızı)`;
-        statusPanel.className = 'status-panel red-turn';
-        statusDisc.className = 'pulse-disc red';
+    if (isOnlineGame) {
+        const isMyTurn = (currentPlayer === myPlayerRole);
+        if (isMyTurn) {
+            statusText.textContent = `🟢 SIRA SİZDE! Taşınızı bırakın`;
+        } else {
+            statusText.textContent = `⏳ Sıra Rakipte (${currentName})`;
+        }
     } else {
-        statusText.textContent = `Sıra ${currentName}'de (Sarı)`;
-        statusPanel.className = 'status-panel yellow-turn';
-        statusDisc.className = 'pulse-disc yellow';
+        statusText.textContent = `Sıra ${currentName}'de (${currentPlayer === PLAYER_RED ? 'Kırmızı' : 'Sarı'})`;
     }
+
+    statusPanel.className = `status-panel ${currentPlayer}-turn`;
+    statusDisc.className = `pulse-disc ${currentPlayer}`;
 }
 
 function updateScoreCardHighlight() {
@@ -691,22 +1081,13 @@ function updateScoreCardHighlight() {
     scoreCardYellow.classList.toggle('active-turn', currentPlayer === PLAYER_YELLOW && !isGameOver);
 }
 
-function updateScoreDisplays() {
-    scoreRedElement.textContent = scores[PLAYER_RED];
-    scoreYellowElement.textContent = scores[PLAYER_YELLOW];
-    scoreTiesElement.textContent = scores.ties;
-}
-
-function getCellElement(row, col) {
-    return document.querySelector(`.cell[data-row="${row}"][data-col="${col}"]`);
-}
-
 // ==============================================================================
-// 11. SÜTUN HOVER VE ÖNİZLEME (PREVIEW GHOST DISC)
+// 9. SÜTUN HOVER VE ÖNİZLEME (GHOST DISC)
 // ==============================================================================
-
 function handleColumnHover(col) {
     if (isGameOver) return;
+    if (isOnlineGame && myPlayerRole !== currentPlayer) return; // Sıra rakipteyken hover yok
+
     hoveredCol = col;
     updatePreviewState();
 
@@ -730,7 +1111,7 @@ function clearColumnHover() {
 }
 
 function updatePreviewState() {
-    if (hoveredCol === -1 || isGameOver) {
+    if (hoveredCol === -1 || isGameOver || (isOnlineGame && myPlayerRole !== currentPlayer)) {
         clearColumnHover();
         return;
     }
@@ -751,16 +1132,62 @@ function updatePreviewState() {
 }
 
 // ==============================================================================
-// 12. YENİDEN BAŞLATMA
+// 10. YENİDEN BAŞLATMA VE GERİ ALMA
 // ==============================================================================
 function restartGame() {
-    initGame();
-    startTurnTimer();
+    if (isOnlineGame && currentRoomId) {
+        // Her iki ekranda da tahtayı sıfırla
+        updateRemoteRoom({
+            board: Array.from({ length: ROWS }, () => Array(COLS).fill(null)),
+            turn: PLAYER_RED,
+            turnStartTime: Date.now(),
+            status: 'playing',
+            lastMove: null,
+            winningCells: null,
+            winner: null
+        });
+    } else {
+        initLocalGame();
+    }
     playBeepSound(440, 0.08);
 }
 
 // ==============================================================================
-// 13. WEB AUDIO API SES SENTEZLEYİCİSİ (HARİCİ DOSYA YOK)
+// 11. BİLDİRİM VE KOPYALAMA YARDIMCILARI
+// ==============================================================================
+function showAlert(title, message, onOk) {
+    alertTitle.textContent = title;
+    alertMessage.textContent = message;
+    alertModal.classList.remove('hidden');
+
+    btnAlertOk.onclick = () => {
+        alertModal.classList.add('hidden');
+        if (onOk) onOk();
+    };
+}
+
+function copyToClipboard(text, onSuccess) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(onSuccess).catch(() => fallbackCopy(text, onSuccess));
+    } else {
+        fallbackCopy(text, onSuccess);
+    }
+}
+
+function fallbackCopy(text, onSuccess) {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+        document.execCommand('copy');
+        if (onSuccess) onSuccess();
+    } catch (e) {}
+    document.body.removeChild(textarea);
+}
+
+// ==============================================================================
+// 12. WEB AUDIO API SES SENTEZLEYİCİSİ (HARİCİ DOSYA YOK)
 // ==============================================================================
 let audioCtx = null;
 
@@ -775,9 +1202,6 @@ function getAudioContext() {
     return audioCtx;
 }
 
-/**
- * 1. Taş Düşme Sesi: Tok ve rezonanslı pop/tık sesi
- */
 function playDropPopSound(row) {
     if (!soundEnabled) return;
     try {
@@ -787,15 +1211,11 @@ function playDropPopSound(row) {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
 
-        // Satır indikçe frekans baslaşır (450Hz -> 240Hz)
         const startFreq = 460 - (row * 35);
-        const endFreq = 140;
-
         osc.type = 'sine';
         osc.frequency.setValueAtTime(startFreq, ctx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(endFreq, ctx.currentTime + 0.09);
+        osc.frequency.exponentialRampToValueAtTime(140, ctx.currentTime + 0.09);
 
-        // Tok 'pop' hissi için ani tepe ve hızlı sönüm
         gain.gain.setValueAtTime(0.35, ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.09);
 
@@ -807,9 +1227,6 @@ function playDropPopSound(row) {
     } catch (e) {}
 }
 
-/**
- * 2. Süre Dolma Sesi: İki aşamalı kısa uyarı/dıt sesi
- */
 function playTimeoutBuzzer() {
     if (!soundEnabled) return;
     try {
@@ -836,16 +1253,13 @@ function playTimeoutBuzzer() {
     } catch (e) {}
 }
 
-/**
- * 3. Kazanma Sesi: Neşeli majör arpej melodisi (C4, E4, G4, C5, E5)
- */
 function playWinArpeggio() {
     if (!soundEnabled) return;
     try {
         const ctx = getAudioContext();
         if (!ctx) return;
 
-        const notes = [261.63, 329.63, 392.00, 523.25, 659.25]; // C, E, G, C5, E5
+        const notes = [261.63, 329.63, 392.00, 523.25, 659.25];
         notes.forEach((freq, idx) => {
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
@@ -865,36 +1279,6 @@ function playWinArpeggio() {
     } catch (e) {}
 }
 
-/**
- * 4. Geri Alma Sesi: Hafif ters pop / whoosh efekti
- */
-function playUndoSound() {
-    if (!soundEnabled) return;
-    try {
-        const ctx = getAudioContext();
-        if (!ctx) return;
-
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(150, ctx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(360, ctx.currentTime + 0.1);
-
-        gain.gain.setValueAtTime(0.25, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
-
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 0.1);
-    } catch (e) {}
-}
-
-/**
- * Genel bip sesi
- */
 function playBeepSound(frequency, duration) {
     if (!soundEnabled) return;
     try {
@@ -919,20 +1303,43 @@ function playBeepSound(frequency, duration) {
 }
 
 // ==============================================================================
-// 14. OLAY DİNLEYİCİLERİ (EVENT LISTENERS)
+// 13. OLAY DİNLEYİCİLERİ (EVENT LISTENERS)
 // ==============================================================================
 themeToggleBtn.addEventListener('click', toggleTheme);
-playerForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    handleStartGame();
+
+// Çok Oyunculu Butonlar
+btnCreateRoom.addEventListener('click', handleCreateRoom);
+btnJoinRoom.addEventListener('click', handleJoinRoom);
+btnCancelWaiting.addEventListener('click', cancelWaitingRoom);
+btnPlayLocalMode.addEventListener('click', handlePlayLocalMode);
+
+// Kopyalama Butonları
+btnCopyRoomCode.addEventListener('click', () => {
+    if (currentRoomId) {
+        copyToClipboard(currentRoomId, () => {
+            copyText.textContent = 'Kopyalandı!';
+            copyIcon.textContent = '✅';
+            setTimeout(() => {
+                copyText.textContent = 'Kodu Kopyala';
+                copyIcon.textContent = '📋';
+            }, 2000);
+        });
+    }
 });
 
-btnStartGame.addEventListener('click', handleStartGame);
-btnChangePlayers.addEventListener('click', returnToIntroScreen);
+btnCopyActiveRoom.addEventListener('click', () => {
+    if (currentRoomId) {
+        copyToClipboard(currentRoomId, () => {
+            btnCopyActiveRoom.textContent = '✅';
+            setTimeout(() => { btnCopyActiveRoom.textContent = '📋'; }, 1500);
+        });
+    }
+});
+
+// Oyun İçi Kontroller
 btnRestart.addEventListener('click', restartGame);
-btnUndo.addEventListener('click', undoMove);
+btnChangePlayers.addEventListener('click', leaveRoomAndReturnToLobby);
 btnResetScores.addEventListener('click', resetAllScores);
-if (btnResetScoresLobby) btnResetScoresLobby.addEventListener('click', resetAllScores);
 
 btnSound.addEventListener('click', () => {
     soundEnabled = !soundEnabled;
@@ -940,11 +1347,8 @@ btnSound.addEventListener('click', () => {
     if (soundEnabled) playBeepSound(600, 0.08);
 });
 
-// Sayfa yüklendiğinde tema ve tercihleri başlat, inputları kesinlikle temizle
+// Sayfa Yüklendiğinde Başlat
 document.addEventListener('DOMContentLoaded', () => {
     initTheme();
     loadPreferences();
-    if (playerForm) playerForm.reset();
-    if (player1Input) player1Input.value = '';
-    if (player2Input) player2Input.value = '';
 });
