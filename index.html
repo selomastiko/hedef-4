@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="tr" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hedef 4 (Connect Four) - İki Kişilik Akıl Oyunu</title>
+    <meta name="description" content="Modern, görsel lobi arayüzlü, 15 saniyelik zamanlayıcılı, hamle geri almalı 2 kişilik Connect Four oyunu.">
+    <!-- Google Fonts: Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- SAĞ ÜST SABİT TEMA DEĞİŞTİRME BUTONU (DARK / LIGHT) -->
+    <button class="theme-toggle-btn" id="themeToggleBtn" aria-label="Gece/Gündüz Modunu Değiştir" title="Temayı Değiştir (Koyu / Açık)">
+        <span class="theme-icon" id="themeIcon">☀️</span>
+        <span class="theme-label" id="themeLabel">Gündüz</span>
+    </button>
+
+    <!-- ======================================================================
+         1. GÖRSEL OYUN LOBİSİ (PROFESYONEL INTRO SCREEN)
+         ====================================================================== -->
+    <section class="intro-screen" id="introScreen" aria-label="Oyun Lobisi">
+        <!-- Arka Plan Işıltı ve Konfeti Parçacıkları -->
+        <div class="lobby-sparkles" aria-hidden="true">
+            <span class="sparkle sp-1"></span>
+            <span class="sparkle sp-2"></span>
+            <span class="sparkle sp-3"></span>
+            <span class="sparkle sp-4"></span>
+            <span class="sparkle sp-5"></span>
+            <span class="sparkle sp-6"></span>
+        </div>
+
+        <div class="lobby-container">
+            <!-- 1. En Üst Başlık Alanı -->
+            <header class="lobby-header">
+                <div class="lobby-badge">
+                    <span class="badge-dot"></span> Canlı Strateji Düellosu
+                </div>
+                <h1 class="lobby-title">HEDEF <span class="neon-four">4</span></h1>
+                <p class="lobby-subtitle">İki Kişilik Akıl ve Strateji Oyunu</p>
+            </header>
+
+            <!-- 2. İki Ana Bölüm (Grid) -->
+            <div class="lobby-grid">
+                <!-- Sol Sütun: Görsel ve Oyun Paneli (3D İllüstrasyon + 15s Rozeti) -->
+                <div class="lobby-col-left">
+                    <div class="illustration-card">
+                        <!-- 15 Saniyelik Sayaç İkon Rozeti -->
+                        <div class="speed-badge">
+                            <span class="speed-icon">⏱️</span>
+                            <div class="speed-text">
+                                <span class="speed-val">15 Saniye</span>
+                                <span class="speed-desc">Hızlı Hamle Limiti</span>
+                            </div>
+                        </div>
+
+                        <!-- 3D Mini Tahta İllüstrasyonu -->
+                        <div class="mini-board-showcase">
+                            <div class="mini-board-frame">
+                                <div class="mini-slot"><span class="mini-disc red float-1"></span></div>
+                                <div class="mini-slot"><span class="mini-disc yellow float-2"></span></div>
+                                <div class="mini-slot"><span class="mini-disc red float-3"></span></div>
+                                <div class="mini-slot"><span class="mini-disc yellow"></span></div>
+
+                                <div class="mini-slot"><span class="mini-disc yellow float-4"></span></div>
+                                <div class="mini-slot"><span class="mini-disc red win-glow"></span></div>
+                                <div class="mini-slot"><span class="mini-disc red win-glow"></span></div>
+                                <div class="mini-slot"><span class="mini-disc red win-glow"></span></div>
+
+                                <div class="mini-slot"><span class="mini-disc red"></span></div>
+                                <div class="mini-slot"><span class="mini-disc yellow"></span></div>
+                                <div class="mini-slot"><span class="mini-disc yellow"></span></div>
+                                <div class="mini-slot"><span class="mini-disc red win-glow"></span></div>
+                            </div>
+                            <!-- Tahta Arkası Dinamik Ortam Işığı -->
+                            <div class="board-ambient-glow"></div>
+                        </div>
+
+                        <div class="illustration-caption">
+                            <span class="live-indicator"></span> 7 Sütun × 6 Satır Yerçekimi Mekaniği
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sağ Sütun: "Nasıl Oynanır?" Bilgi Paneli -->
+                <div class="lobby-col-right">
+                    <div class="how-to-play-card">
+                        <div class="how-header">
+                            <span class="how-icon">💡</span>
+                            <h2>NASIL OYNANIR?</h2>
+                        </div>
+
+                        <ul class="rules-list">
+                            <li class="rule-item">
+                                <div class="rule-icon-box">👤</div>
+                                <div class="rule-content">
+                                    <p>İsimlerinizi girin ve oyunu başlatın.</p>
+                                </div>
+                            </li>
+                            <li class="rule-item">
+                                <div class="rule-icon-box">🎯</div>
+                                <div class="rule-content">
+                                    <p>Sırayla bir sütun seçin; taşlar en alta düşer.</p>
+                                </div>
+                            </li>
+                            <li class="rule-item">
+                                <div class="rule-icon-box">🏆</div>
+                                <div class="rule-content">
+                                    <p>Yatay, dikey veya çapraz 4 taşı yan yana ilk dizen kazanır!</p>
+                                </div>
+                            </li>
+                            <li class="rule-item">
+                                <div class="rule-icon-box">⏱️</div>
+                                <div class="rule-content">
+                                    <p>Süreniz 15 saniye! Unutmayın, son hamleyi geri alabilirsiniz!</p>
+                                </div>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. Oyuncu Girişleri ve Butonlar (Alt Kısım) -->
+            <div class="lobby-bottom-panel">
+                <form class="lobby-player-form" id="playerForm" onsubmit="return false;" autocomplete="off">
+                    <!-- Giriş Kutuları (Kırmızı & Sarı Avatar İkonlu) -->
+                    <div class="player-inputs-row">
+                        <!-- 1. Oyuncu Girişi (Kesinlikle boş ve sadece placeholder) -->
+                        <div class="input-card player-red-card">
+                            <div class="avatar-icon red-avatar" title="1. Oyuncu (Kırmızı)">
+                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path>
+                                    <circle cx="12" cy="7" r="4"></circle>
+                                </svg>
+                            </div>
+                            <div class="input-field-group">
+                                <label for="player1Input">1. Oyuncu (Kırmızı)</label>
+                                <input type="text" id="player1Input" maxlength="15" placeholder="1. Oyuncu İsmi" autocomplete="off">
+                            </div>
+                        </div>
+
+                        <!-- 2. Oyuncu Girişi (Kesinlikle boş ve sadece placeholder) -->
+                        <div class="input-card player-yellow-card">
+                            <div class="avatar-icon yellow-avatar" title="2. Oyuncu (Sarı)">
+                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path>
+                                    <circle cx="12" cy="7" r="4"></circle>
+                                </svg>
+                            </div>
+                            <div class="input-field-group">
+                                <label for="player2Input">2. Oyuncu (Sarı)</label>
+                                <input type="text" id="player2Input" maxlength="15" placeholder="2. Oyuncu İsmi" autocomplete="off">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Buton Grubu: Neon Yeşili Pulse OYUNA BAŞLA + Skorları Sıfırla -->
+                    <div class="lobby-action-buttons">
+                        <button type="submit" class="btn btn-lobby-start" id="btnStartGame">
+                            <span class="btn-text">OYUNA BAŞLA</span>
+                            <svg class="play-icon" width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                                <polygon points="6 3 20 12 6 21 6 3"></polygon>
+                            </svg>
+                        </button>
+
+                        <button type="button" class="btn btn-lobby-reset" id="btnResetScoresLobby" title="Kayıtlı skorları sıfırla">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M3 6h18"></path>
+                                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                            </svg>
+                            <span>Skorları Sıfırla</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <!-- ======================================================================
+         2. ANA OYUN ALANI (GAME CONTAINER) - Başlangıçta gizli
+         ====================================================================== -->
+    <main class="game-container hidden" id="gameContainer" aria-label="Oyun Alanı">
+        <!-- Başlık Alanı -->
+        <header class="game-header">
+            <h1 class="game-title">HEDEF <span>4</span></h1>
+            <p class="game-subtitle">4 taşı yan yana, alt alta veya çapraz dizen kazanır!</p>
+        </header>
+
+        <!-- Skor Tablosu + Skorları Sıfırla Butonu -->
+        <div class="scoreboard-wrapper">
+            <div class="scoreboard">
+                <div class="score-card player-red" id="scoreCardRed">
+                    <div class="player-badge">
+                        <span class="disc-icon red"></span>
+                        <span class="player-name" id="scoreNameRed">1. Oyuncu</span>
+                    </div>
+                    <div class="score-value" id="scoreRed">0</div>
+                </div>
+
+                <div class="score-card ties" id="scoreCardTies">
+                    <div class="player-badge">
+                        <span class="tie-icon">🤝</span>
+                        <span class="player-name">Berabere</span>
+                    </div>
+                    <div class="score-value" id="scoreTies">0</div>
+                </div>
+
+                <div class="score-card player-yellow" id="scoreCardYellow">
+                    <div class="player-badge">
+                        <span class="disc-icon yellow"></span>
+                        <span class="player-name" id="scoreNameYellow">2. Oyuncu</span>
+                    </div>
+                    <div class="score-value" id="scoreYellow">0</div>
+                </div>
+            </div>
+
+            <!-- Minik Skorları Sıfırla Butonu -->
+            <button class="btn-reset-scores" id="btnResetScores" title="Kayıtlı skorları sıfırla">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 6h18"></path>
+                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                </svg>
+                Skorları Sıfırla
+            </button>
+        </div>
+
+        <!-- Durum ve Sıra Bilgi Paneli + 15s Zamanlayıcı -->
+        <div class="status-panel" id="statusPanel">
+            <div class="turn-indicator" id="turnIndicator">
+                <span class="pulse-disc" id="statusDisc"></span>
+                <span id="statusText">Sıra 1. Oyuncuda (Kırmızı)</span>
+            </div>
+
+            <!-- 15 Saniyelik Hamle Geri Sayım Sayacı -->
+            <div class="turn-timer" id="turnTimer" title="Hamle süresi: 15 saniye">
+                <svg class="timer-ring" width="34" height="34" viewBox="0 0 36 36">
+                    <circle class="timer-ring-bg" cx="18" cy="18" r="15.9155" />
+                    <circle class="timer-ring-progress" id="timerRingProgress" cx="18" cy="18" r="15.9155" />
+                </svg>
+                <span class="timer-number" id="timerNumber">15</span>
+            </div>
+        </div>
+
+        <!-- Sütun Üstü Hamle Önizleme Göstergesi -->
+        <div class="drop-preview-container" id="dropPreview">
+            <!-- JS ile 7 adet önizleme hücresi oluşturulur -->
+        </div>
+
+        <!-- Oyun Tahtası -->
+        <div class="board-wrapper">
+            <div class="board" id="board" role="grid" aria-label="Connect Four Oyun Tahtası">
+                <!-- 7 sütun x 6 satır (42 hücre) JS ile dinamik olarak yerleştirilecek -->
+            </div>
+        </div>
+
+        <!-- Alt Kontrol Paneli -->
+        <div class="controls-panel">
+            <!-- Son Hamleyi Geri Al Butonu -->
+            <button class="btn btn-undo" id="btnUndo" title="Son yapılan hamleyi geri al" disabled>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 14 4 9l5-5"/>
+                    <path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/>
+                </svg>
+                Hamleyi Geri Al
+            </button>
+
+            <!-- Yeniden Başlat Butonu -->
+            <button class="btn btn-restart" id="btnRestart" title="Mevcut turu sıfırlar (Skorlar korunur)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                    <path d="M3 3v5h5"/>
+                </svg>
+                Yeniden Başlat
+            </button>
+
+            <!-- Oyuncular / Giriş Ekranına Dönüş Butonu -->
+            <button class="btn btn-secondary" id="btnChangePlayers" title="Giriş ekranına dönüp oyuncu isimlerini değiştirin">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="9" cy="7" r="4"></circle>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+                Lobiye Dön
+            </button>
+
+            <!-- Ses Aç/Kapat Butonu -->
+            <button class="btn btn-sound" id="btnSound" aria-label="Sesi Aç/Kapat" title="Sesi Aç/Kapat">
+                <span id="soundIcon">🔊</span>
+            </button>
+        </div>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>
